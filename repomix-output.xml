@@ -1,0 +1,3303 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app.js
+config/db.js
+controllers/authController.js
+controllers/mediaController.js
+controllers/notesController.js
+controllers/usersController.js
+database/schema.sql
+database/setup.js
+middleware/auth.js
+middleware/validation.js
+models/Note.js
+models/User.js
+package.json
+routes/auth.js
+routes/notes.js
+routes/upload.js
+routes/users.js
+services/authService.js
+services/notesService.js
+services/usersService.js
+uploads/files/1764228782154-752314448.txt
+uploads/voices/1764228327910-278869859.webm
+uploads/voices/1764228854964-816521022.webm
+utils/helpers.js
+utils/respons.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app.js">
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+const notesRoutes = require("./routes/notes");
+const authRoutes = require("./routes/auth");
+const uploadRoutes = require("./routes/upload");
+
+const app = express();
+
+// Middleware
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Routes
+app.use("/api/notes", notesRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/upload", uploadRoutes);
+
+// Health check
+app.get("/api/health", (req, res) => {
+  res.json({ status: "OK", message: "IngetinAja API is running" });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📝 IngetinAja API: http://localhost:${PORT}/api`);
+  console.log(`📁 Uploads directory: http://localhost:${PORT}/uploads`);
+  console.log(`🔗 Frontend: http://localhost:5173`);
+});
+</file>
+
+<file path="config/db.js">
+const { Pool } = require("pg");
+require("dotenv").config();
+
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
+// Test connection
+pool.on("connect", () => {
+  console.log("✅ Connected to PostgreSQL database");
+});
+
+pool.on("error", (err) => {
+  console.error("❌ PostgreSQL pool error:", err);
+});
+
+module.exports = pool;
+</file>
+
+<file path="controllers/authController.js">
+const authService = require("../services/authService");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+class AuthController {
+  async register(req, res) {
+    try {
+      const { username, email, password } = req.body;
+
+      // Validasi
+      if (!username || !email || !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "Semua field harus diisi",
+        });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({
+          status: "error",
+          message: "Password minimal 6 karakter",
+        });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Simpan ke database (simplified)
+      const pool = require("../config/db");
+      const result = await pool.query(
+        "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email, created_at",
+        [username, email, hashedPassword]
+      );
+
+      // Generate token
+      const token = jwt.sign(
+        { id: result.rows[0].id, username: result.rows[0].username },
+        process.env.JWT_SECRET || "your_jwt_secret",
+        { expiresIn: "7d" }
+      );
+
+      res.status(201).json({
+        status: "success",
+        data: {
+          user: result.rows[0],
+          token,
+        },
+        message: "Registrasi berhasil!",
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      if (error.code === "23505") {
+        // Unique constraint violation
+        return res.status(409).json({
+          status: "error",
+          message: "Username atau email sudah digunakan",
+        });
+      }
+
+      res.status(500).json({
+        status: "error",
+        message: "Server error: " + error.message,
+      });
+    }
+  }
+
+  async login(req, res) {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "Username dan password harus diisi",
+        });
+      }
+
+      // Cari user di database
+      const pool = require("../config/db");
+      const result = await pool.query(
+        "SELECT * FROM users WHERE username = $1 OR email = $1",
+        [username]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(401).json({
+          status: "error",
+          message: "Username atau password salah",
+        });
+      }
+
+      const user = result.rows[0];
+
+      // Verifikasi password
+      const validPassword = await bcrypt.compare(password, user.password);
+      if (!validPassword) {
+        return res.status(401).json({
+          status: "error",
+          message: "Username atau password salah",
+        });
+      }
+
+      // Generate token
+      const token = jwt.sign(
+        {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+        },
+        process.env.JWT_SECRET || "your_jwt_secret",
+        { expiresIn: "7d" }
+      );
+
+      // Remove password dari response
+      const { password: _, ...userWithoutPassword } = user;
+
+      res.json({
+        status: "success",
+        data: {
+          user: userWithoutPassword,
+          token,
+        },
+        message: "Login berhasil!",
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Server error: " + error.message,
+      });
+    }
+  }
+
+  async getProfile(req, res) {
+    try {
+      const userId = req.user.id;
+      const pool = require("../config/db");
+      const result = await pool.query(
+        "SELECT id, username, email, created_at FROM users WHERE id = $1",
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User tidak ditemukan",
+        });
+      }
+
+      res.json({
+        status: "success",
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error("Get profile error:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Server error",
+      });
+    }
+  }
+}
+
+module.exports = new AuthController();
+</file>
+
+<file path="controllers/mediaController.js">
+// controllers/mediaController.js
+const notesService = require("../services/notesService");
+const fs = require("fs");
+const path = require("path");
+
+const uploadsDir = path.join(__dirname, "../uploads");
+
+// POST handler untuk semua jenis upload file
+const handleUpload = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "No file uploaded" });
+    }
+
+    // Tentukan folder dan type dari Multer (lihat routes/upload.js storage logic)
+    const fileType = req.file.mimetype.startsWith("image/")
+      ? "images"
+      : req.file.mimetype.startsWith("audio/")
+      ? "voices"
+      : "files";
+
+    const fileInfo = {
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      file_path: `/uploads/${fileType}/${req.file.filename}`,
+      type: fileType.slice(0, -1), // 'image', 'file', 'voice'
+      url: `http://localhost:5000/uploads/${fileType}/${req.file.filename}`,
+    };
+
+    // Jika noteId disediakan di body, segera link ke database
+    const noteId = parseInt(req.body.noteId);
+    const userId = req.userId; // Dari middleware 'protect'
+
+    if (noteId && userId) {
+      const dbEntry = await notesService.addMediaToNote(
+        noteId,
+        userId,
+        fileInfo
+      );
+      fileInfo.id = dbEntry.id;
+    }
+
+    res.json({ status: "success", data: fileInfo });
+  } catch (error) {
+    // Hapus file dari sistem file jika terjadi error DB
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res
+      .status(500)
+      .json({
+        status: "error",
+        message: "Gagal mengunggah dan menghubungkan file: " + error.message,
+      });
+  }
+};
+
+// DELETE handler untuk menghapus dari DB dan File System
+const deleteMedia = async (req, res) => {
+  try {
+    // ID media yang akan dihapus (ID dari tabel 'media')
+    const mediaId = parseInt(req.params.id);
+    const userId = req.userId;
+
+    // 1. Hapus dari database dan dapatkan info file
+    const fileInfo = await notesService.deleteMedia(mediaId, userId);
+
+    if (!fileInfo) {
+      return res
+        .status(404)
+        .json({
+          status: "error",
+          message: "Media tidak ditemukan atau Anda tidak punya izin.",
+        });
+    }
+
+    // 2. Hapus dari sistem file
+    const folder =
+      fileInfo.type === "image"
+        ? "images"
+        : fileInfo.type === "voice"
+        ? "voices"
+        : "files";
+    const filePath = path.join(uploadsDir, folder, fileInfo.filename);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({
+      status: "success",
+      message: "Media berhasil dihapus sepenuhnya.",
+    });
+  } catch (error) {
+    const statusCode = error.message.includes("pemilik") ? 403 : 500;
+    res.status(statusCode).json({ status: "error", message: error.message });
+  }
+};
+
+module.exports = {
+  handleUpload,
+  deleteMedia,
+};
+</file>
+
+<file path="controllers/notesController.js">
+const Note = require("../models/Note");
+
+class NotesController {
+  async getAllNotes(req, res) {
+    try {
+      const userId = req.user.id;
+      const notes = await Note.findAllByUser(userId);
+
+      res.json({
+        status: "success",
+        data: notes,
+      });
+    } catch (error) {
+      console.error("Get all notes error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async getNoteById(req, res) {
+    try {
+      const noteId = parseInt(req.params.id);
+      const userId = req.user.id;
+
+      // First get all user's notes to check access
+      const userNotes = await Note.findAllByUser(userId);
+      const noteExists = userNotes.some((note) => note.id === noteId);
+
+      if (!noteExists) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found or access denied",
+        });
+      }
+
+      const note = await Note.getCompleteNote(noteId);
+
+      if (!note) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found",
+        });
+      }
+
+      res.json({
+        status: "success",
+        data: note,
+      });
+    } catch (error) {
+      console.error("Get note by ID error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async createNote(req, res) {
+    try {
+      const userId = req.user.id;
+      const noteData = req.body;
+
+      const newNote = await Note.create(userId, noteData);
+
+      res.status(201).json({
+        status: "success",
+        data: newNote,
+      });
+    } catch (error) {
+      console.error("Create note error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async updateNote(req, res) {
+    try {
+      const noteId = parseInt(req.params.id);
+      const userId = req.user.id;
+      const updateData = req.body;
+
+      // First check if user has access to this note
+      const userNotes = await Note.findAllByUser(userId);
+      const noteExists = userNotes.some((note) => note.id === noteId);
+
+      if (!noteExists) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found or access denied",
+        });
+      }
+
+      const updatedNote = await Note.update(noteId, updateData);
+
+      res.json({
+        status: "success",
+        data: updatedNote,
+      });
+    } catch (error) {
+      console.error("Update note error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async deleteNote(req, res) {
+    try {
+      const noteId = parseInt(req.params.id);
+      const userId = req.user.id;
+
+      // First check if user has access to this note
+      const userNotes = await Note.findAllByUser(userId);
+      const noteExists = userNotes.some((note) => note.id === noteId);
+
+      if (!noteExists) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found or access denied",
+        });
+      }
+
+      const deletedNote = await Note.delete(noteId);
+
+      res.json({
+        status: "success",
+        data: deletedNote,
+        message: "Note deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete note error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async shareNote(req, res) {
+    try {
+      const noteId = parseInt(req.params.id);
+      const userId = req.user.id;
+      const { collaborators } = req.body; // Ini seharusnya array of usernames
+
+      console.log(
+        "Share note request - Note ID:",
+        noteId,
+        "User ID:",
+        userId,
+        "Collaborators:",
+        collaborators
+      );
+
+      // First check if user owns this note (only owners can share)
+      const userNotes = await Note.findAllByUser(userId);
+      const note = userNotes.find((note) => note.id === noteId);
+
+      if (!note) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found or access denied",
+        });
+      }
+
+      // Check if user is the owner
+      if (note.owner_id !== userId) {
+        return res.status(403).json({
+          status: "error",
+          message: "Only note owner can share the note",
+        });
+      }
+
+      const updatedNote = await Note.shareWithCollaborators(
+        noteId,
+        collaborators // Kirim usernames, bukan IDs
+      );
+
+      res.json({
+        status: "success",
+        data: updatedNote,
+        message: "Note shared successfully",
+      });
+    } catch (error) {
+      console.error("Share note error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async getNotesWithReminders(req, res) {
+    try {
+      const userId = req.user.id;
+      const notes = await Note.getNotesWithActiveReminders(userId);
+
+      res.json({
+        status: "success",
+        data: notes,
+      });
+    } catch (error) {
+      console.error("Get notes with reminders error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async updateReminder(req, res) {
+    try {
+      const noteId = parseInt(req.params.id);
+      const userId = req.user.id;
+      const { reminder } = req.body;
+
+      // First check if user has access to this note
+      const userNotes = await Note.findAllByUser(userId);
+      const noteExists = userNotes.some((note) => note.id === noteId);
+
+      if (!noteExists) {
+        return res.status(404).json({
+          status: "error",
+          message: "Note not found or access denied",
+        });
+      }
+
+      const updatedNote = await Note.updateReminder(noteId, reminder);
+
+      res.json({
+        status: "success",
+        data: updatedNote,
+        message: "Reminder updated successfully",
+      });
+    } catch (error) {
+      console.error("Update reminder error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+}
+
+module.exports = new NotesController();
+</file>
+
+<file path="controllers/usersController.js">
+const usersService = require("../services/usersService");
+
+class UsersController {
+  async getAllUsers(req, res) {
+    try {
+      // Only admin should access this in production
+      // For now, we'll allow it for demo purposes
+      const users = await usersService.getAllUsers();
+
+      res.json({
+        status: "success",
+        data: users,
+      });
+    } catch (error) {
+      console.error("Get all users error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async getUserById(req, res) {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await usersService.getUserById(userId);
+
+      res.json({
+        status: "success",
+        data: user,
+      });
+    } catch (error) {
+      console.error("Get user by ID error:", error.message);
+
+      let statusCode = 500;
+      if (error.message.includes("not found")) {
+        statusCode = 404;
+      }
+
+      res.status(statusCode).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async updateUser(req, res) {
+    try {
+      const userId = parseInt(req.params.id);
+      const updateData = req.body;
+
+      // In production, check if user is updating their own profile or is admin
+      const updatedUser = await usersService.updateUser(userId, updateData);
+
+      res.json({
+        status: "success",
+        data: updatedUser,
+      });
+    } catch (error) {
+      console.error("Update user error:", error.message);
+
+      let statusCode = 500;
+      let message = error.message;
+
+      if (
+        error.message.includes("already taken") ||
+        error.message.includes("not found")
+      ) {
+        statusCode = 400;
+      }
+
+      res.status(statusCode).json({
+        status: "error",
+        message: message,
+      });
+    }
+  }
+
+  async deleteUser(req, res) {
+    try {
+      const userId = parseInt(req.params.id);
+      const result = await usersService.deleteUser(userId);
+
+      res.json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Delete user error:", error.message);
+
+      let statusCode = 500;
+      if (error.message.includes("not found")) {
+        statusCode = 404;
+      }
+
+      res.status(statusCode).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+
+  async searchUsers(req, res) {
+    try {
+      const { q } = req.query;
+
+      if (!q || q.trim().length === 0) {
+        return res.json({
+          status: "success",
+          data: [],
+        });
+      }
+
+      const users = await usersService.searchUsers(q.trim());
+
+      res.json({
+        status: "success",
+        data: users,
+      });
+    } catch (error) {
+      console.error("Search users error:", error.message);
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+}
+
+module.exports = new UsersController();
+</file>
+
+<file path="database/schema.sql">
+-- Database: ingetinaja
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Table: users
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: notes
+CREATE TABLE IF NOT EXISTS notes (
+    id SERIAL PRIMARY KEY,
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255),
+    text TEXT,
+    reminder TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: checklist_items
+CREATE TABLE IF NOT EXISTS checklist_items (
+    id SERIAL PRIMARY KEY,
+    note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+    text VARCHAR(255) NOT NULL,
+    checked BOOLEAN DEFAULT FALSE,
+    position INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: collaborators
+CREATE TABLE IF NOT EXISTS collaborators (
+    id SERIAL PRIMARY KEY,
+    note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(note_id, user_id)
+);
+
+-- Table: media (for images, files, and voice notes)
+CREATE TABLE IF NOT EXISTS media (
+    id SERIAL PRIMARY KEY,
+    note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('image', 'file', 'voice')),
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255),
+    mime_type VARCHAR(100),
+    file_size BIGINT,
+    file_path TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_notes_owner_id ON notes(owner_id);
+CREATE INDEX IF NOT EXISTS idx_notes_reminder ON notes(reminder);
+CREATE INDEX IF NOT EXISTS idx_checklist_items_note_id ON checklist_items(note_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_note_id ON collaborators(note_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON collaborators(user_id);
+CREATE INDEX IF NOT EXISTS idx_media_note_id ON media(note_id);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger for notes table
+CREATE TRIGGER update_notes_updated_at BEFORE UPDATE
+    ON notes FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+-- Trigger for users table
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE
+    ON users FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+</file>
+
+<file path="database/setup.js">
+const { Pool } = require("pg");
+require("dotenv").config({ path: "../.env" });
+
+async function setupDatabase() {
+  const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: "postgres",
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT,
+  });
+
+  try {
+    console.log("🚀 Setting up PostgreSQL database...");
+
+    const client = await pool.connect();
+
+    // 1. Check/Create database
+    try {
+      await client.query(`CREATE DATABASE ingetinaja`);
+      console.log("✅ Database created: ingetinaja");
+    } catch (err) {
+      if (err.code === "42P04") {
+        console.log("✅ Database already exists: ingetinaja");
+      } else {
+        throw err;
+      }
+    }
+
+    await client.release();
+
+    // 2. Connect to ingetinaja database
+    const appPool = new Pool({
+      user: process.env.DB_USER,
+      host: process.env.DB_HOST,
+      database: "ingetinaja",
+      password: process.env.DB_PASSWORD,
+      port: process.env.DB_PORT,
+    });
+
+    const appClient = await appPool.connect();
+
+    // 3. Create tables
+    console.log("📝 Creating tables...");
+
+    await appClient.query(`
+      -- Table: users
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await appClient.query(`
+      -- Table: notes
+      CREATE TABLE IF NOT EXISTS notes (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255),
+        text TEXT,
+        reminder TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await appClient.query(`
+      -- Table: checklist_items
+      CREATE TABLE IF NOT EXISTS checklist_items (
+        id SERIAL PRIMARY KEY,
+        note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+        text VARCHAR(255) NOT NULL,
+        checked BOOLEAN DEFAULT FALSE,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await appClient.query(`
+      -- Table: collaborators
+      CREATE TABLE IF NOT EXISTS collaborators (
+        id SERIAL PRIMARY KEY,
+        note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(note_id, user_id)
+      );
+    `);
+
+    await appClient.query(`
+      -- Table: media (for images, files, and voice notes)
+      CREATE TABLE IF NOT EXISTS media (
+        id SERIAL PRIMARY KEY,
+        note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+        type VARCHAR(20) NOT NULL CHECK (type IN ('image', 'file', 'voice')),
+        filename VARCHAR(255) NOT NULL,
+        original_name VARCHAR(255),
+        mime_type VARCHAR(100),
+        file_size BIGINT,
+        file_path TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    console.log("✅ Tables created successfully");
+
+    // 4. Create demo user
+    const bcrypt = require("bcryptjs");
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync("demo123", salt);
+
+    await appClient.query(
+      `
+      INSERT INTO users (username, email, password)
+      VALUES ('demo', 'demo@example.com', $1)
+      ON CONFLICT (username) DO NOTHING
+    `,
+      [hashedPassword]
+    );
+
+    console.log("✅ Demo user created/checked");
+
+    // 5. Create demo note
+    const userResult = await appClient.query(
+      "SELECT id FROM users WHERE username = $1",
+      ["demo"]
+    );
+
+    if (userResult.rows.length > 0) {
+      const userId = userResult.rows[0].id;
+
+      const noteCheck = await appClient.query(
+        "SELECT COUNT(*) FROM notes WHERE owner_id = $1",
+        [userId]
+      );
+
+      if (parseInt(noteCheck.rows[0].count) === 0) {
+        await appClient.query(
+          `
+          INSERT INTO notes (owner_id, title, text, reminder)
+          VALUES ($1, $2, $3, $4)
+        `,
+          [
+            userId,
+            "Selamat datang di IngetinAja!",
+            "Ini adalah catatan contoh dari database PostgreSQL",
+            new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          ]
+        );
+
+        console.log("✅ Demo note created");
+      }
+    }
+
+    console.log("🎉 Database setup completed successfully!");
+
+    await appClient.release();
+    await appPool.end();
+    await pool.end();
+  } catch (error) {
+    console.error("❌ Error setting up database:", error.message);
+    console.log("\n🔍 Troubleshooting tips:");
+    console.log("1. Pastikan PostgreSQL berjalan: sudo service postgresql start");
+    console.log("2. Cek koneksi dengan: psql -U postgres");
+    console.log("3. Pastikan password di .env sesuai");
+  }
+}
+
+setupDatabase();
+</file>
+
+<file path="middleware/auth.js">
+const jwt = require("jsonwebtoken");
+
+const authMiddleware = (req, res, next) => {
+  // Skip auth untuk routes tertentu
+  if (
+    req.path === "/api/auth/login" ||
+    req.path === "/api/auth/register" ||
+    req.path === "/api/health"
+  ) {
+    return next();
+  }
+
+  // Get token dari header
+  const authHeader = req.header("Authorization");
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      status: "error",
+      message: "Access denied. No token provided.",
+    });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
+  try {
+    // Verify token
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your_jwt_secret"
+    );
+
+    // Add user ke request
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.error("Token verification failed:", err.message);
+    return res.status(401).json({
+      status: "error",
+      message: "Invalid token",
+    });
+  }
+};
+
+module.exports = authMiddleware;
+</file>
+
+<file path="middleware/validation.js">
+const validateNote = (req, res, next) => {
+  const { title, text } = req.body;
+
+  if (!title && !text) {
+    return res.status(400).json({
+      status: "error",
+      message: "Title or text is required",
+    });
+  }
+
+  // Validate reminder if exists
+  if (req.body.reminder) {
+    const { date, time } = req.body.reminder;
+
+    if (date && time) {
+      const dateTimeString = `${date}T${time}`;
+      const reminderDate = new Date(dateTimeString);
+
+      if (isNaN(reminderDate.getTime())) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reminder date/time format",
+        });
+      }
+
+      // Check if reminder is in the past
+      if (reminderDate.getTime() < Date.now()) {
+        return res.status(400).json({
+          status: "error",
+          message: "Reminder cannot be in the past",
+        });
+      }
+    }
+  }
+
+  next();
+};
+
+const validateUser = (req, res, next) => {
+  const { username, email, password } = req.body;
+
+  // Registration validation
+  if (req.path === "/register") {
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        status: "error",
+        message: "All fields are required",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid email format",
+      });
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 6 characters",
+      });
+    }
+  }
+
+  // Login validation
+  if (req.path === "/login") {
+    if (!username || !password) {
+      return res.status(400).json({
+        status: "error",
+        message: "Username and password are required",
+      });
+    }
+  }
+
+  next();
+};
+
+module.exports = {
+  validateNote,
+  validateUser,
+};
+</file>
+
+<file path="models/Note.js">
+const pool = require("../config/db");
+
+class Note {
+  static async findById(id) {
+    const query = "SELECT * FROM notes WHERE id = $1";
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
+  static async findAllByUser(userId) {
+    const query = `
+      SELECT 
+        n.*,
+        u.username as owner_name,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', ci.id,
+              'text', ci.text,
+              'checked', ci.checked,
+              'position', ci.position
+            )
+          ) FILTER (WHERE ci.id IS NOT NULL),
+          '[]'
+        ) as checklist,
+        COALESCE(
+          array_agg(DISTINCT c.user_id) FILTER (WHERE c.user_id IS NOT NULL),
+          '{}'
+        ) as collaborators,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', m.id,
+              'type', m.type,
+              'filename', m.filename,
+              'original_name', m.original_name,
+              'mime_type', m.mime_type,
+              'file_size', m.file_size,
+              'file_path', m.file_path,
+              'url', '/uploads/' || m.type || 's/' || m.filename
+            )
+          ) FILTER (WHERE m.id IS NOT NULL),
+          '[]'
+        ) as media
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      LEFT JOIN media m ON n.id = m.note_id
+      WHERE n.owner_id = $1 OR c.user_id = $1
+      GROUP BY n.id, u.username
+      ORDER BY n.updated_at DESC
+    `;
+    const result = await pool.query(query, [userId]);
+
+    // Organize media by type
+    const organizedNotes = result.rows.map((note) => {
+      if (note.media) {
+        const organizedMedia = {
+          images: note.media.filter((m) => m.type === "image"),
+          files: note.media.filter((m) => m.type === "file"),
+          voices: note.media.filter((m) => m.type === "voice"),
+        };
+
+        note.images = organizedMedia.images;
+        note.files = organizedMedia.files;
+        note.voices = organizedMedia.voices;
+        delete note.media;
+      }
+
+      return note;
+    });
+
+    return organizedNotes;
+  }
+
+  static async create(ownerId, data) {
+    const {
+      title,
+      text,
+      reminder,
+      checklist,
+      collaborators,
+      images,
+      files,
+      voices,
+    } = data;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Insert note
+      const noteQuery = `
+        INSERT INTO notes (owner_id, title, text, reminder)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `;
+
+      let reminderValue = null;
+      if (reminder && reminder.timestamp) {
+        reminderValue = new Date(reminder.timestamp);
+      }
+
+      const noteResult = await client.query(noteQuery, [
+        ownerId,
+        title || "",
+        text || "",
+        reminderValue,
+      ]);
+      const note = noteResult.rows[0];
+
+      // Insert checklist items
+      if (checklist && checklist.length > 0) {
+        for (const [index, item] of checklist.entries()) {
+          await client.query(
+            "INSERT INTO checklist_items (note_id, text, checked, position) VALUES ($1, $2, $3, $4)",
+            [note.id, item.text || "", item.checked || false, index]
+          );
+        }
+      }
+
+      // Insert collaborators
+      if (collaborators && collaborators.length > 0) {
+        for (const collaboratorId of collaborators) {
+          await client.query(
+            "INSERT INTO collaborators (note_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [note.id, collaboratorId]
+          );
+        }
+      }
+
+      // Insert media
+      const mediaTypes = [
+        { type: "image", items: images || [] },
+        { type: "file", items: files || [] },
+        { type: "voice", items: voices || [] },
+      ];
+
+      for (const mediaType of mediaTypes) {
+        for (const media of mediaType.items) {
+          if (media && media.filename) {
+            await client.query(
+              `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                note.id,
+                mediaType.type,
+                media.filename,
+                media.originalName || media.filename,
+                media.mimetype || "application/octet-stream",
+                media.size || 0,
+                media.url || media.path || "",
+              ]
+            );
+          }
+        }
+      }
+
+      await client.query("COMMIT");
+
+      // Return the complete note
+      return await this.getCompleteNote(note.id);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error creating note:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async update(id, data) {
+    const {
+      title,
+      text,
+      reminder,
+      checklist,
+      collaborators,
+      images,
+      files,
+      voices,
+    } = data;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Update note
+      let reminderValue = null;
+      if (reminder && reminder.timestamp) {
+        reminderValue = new Date(reminder.timestamp);
+      }
+
+      const updateQuery = `
+        UPDATE notes 
+        SET title = $1, text = $2, reminder = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        RETURNING *
+      `;
+
+      const noteResult = await client.query(updateQuery, [
+        title || "",
+        text || "",
+        reminderValue,
+        id,
+      ]);
+
+      const note = noteResult.rows[0];
+
+      if (!note) {
+        throw new Error("Note not found");
+      }
+
+      // Delete and re-insert checklist items
+      await client.query("DELETE FROM checklist_items WHERE note_id = $1", [
+        id,
+      ]);
+      if (checklist && checklist.length > 0) {
+        for (const [index, item] of checklist.entries()) {
+          await client.query(
+            "INSERT INTO checklist_items (note_id, text, checked, position) VALUES ($1, $2, $3, $4)",
+            [id, item.text || "", item.checked || false, index]
+          );
+        }
+      }
+
+      // Delete and re-insert collaborators
+      await client.query("DELETE FROM collaborators WHERE note_id = $1", [id]);
+      if (collaborators && collaborators.length > 0) {
+        for (const collaboratorId of collaborators) {
+          await client.query(
+            "INSERT INTO collaborators (note_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [id, collaboratorId]
+          );
+        }
+      }
+
+      // Delete and re-insert media (simplified version)
+      await client.query("DELETE FROM media WHERE note_id = $1", [id]);
+
+      const mediaTypes = [
+        { type: "image", items: images || [] },
+        { type: "file", items: files || [] },
+        { type: "voice", items: voices || [] },
+      ];
+
+      for (const mediaType of mediaTypes) {
+        for (const media of mediaType.items) {
+          if (media && media.filename) {
+            await client.query(
+              `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                id,
+                mediaType.type,
+                media.filename,
+                media.originalName || media.filename,
+                media.mimetype || "application/octet-stream",
+                media.size || 0,
+                media.url || media.path || "",
+              ]
+            );
+          }
+        }
+      }
+
+      await client.query("COMMIT");
+
+      // Return the complete note
+      return await this.getCompleteNote(id);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error updating note:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async delete(id) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Delete related records (cascade should handle most, but being explicit)
+      await client.query("DELETE FROM checklist_items WHERE note_id = $1", [
+        id,
+      ]);
+      await client.query("DELETE FROM collaborators WHERE note_id = $1", [id]);
+      await client.query("DELETE FROM media WHERE note_id = $1", [id]);
+
+      // Delete the note
+      const query = "DELETE FROM notes WHERE id = $1 RETURNING *";
+      const result = await client.query(query, [id]);
+
+      await client.query("COMMIT");
+      return result.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error deleting note:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async getCompleteNote(noteId) {
+    const query = `
+      SELECT 
+        n.*,
+        u.username as owner_name,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', ci.id,
+              'text', ci.text,
+              'checked', ci.checked,
+              'position', ci.position
+            )
+          ) FILTER (WHERE ci.id IS NOT NULL),
+          '[]'
+        ) as checklist,
+        COALESCE(
+          array_agg(DISTINCT c.user_id) FILTER (WHERE c.user_id IS NOT NULL),
+          '{}'
+        ) as collaborators,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', m.id,
+              'type', m.type,
+              'filename', m.filename,
+              'original_name', m.original_name,
+              'mime_type', m.mime_type,
+              'file_size', m.file_size,
+              'file_path', m.file_path,
+              'url', '/uploads/' || m.type || 's/' || m.filename
+            )
+          ) FILTER (WHERE m.id IS NOT NULL),
+          '[]'
+        ) as media
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      LEFT JOIN media m ON n.id = m.note_id
+      WHERE n.id = $1
+      GROUP BY n.id, u.username
+    `;
+
+    const result = await pool.query(query, [noteId]);
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const note = result.rows[0];
+
+    // Organize media by type
+    if (note.media) {
+      const organizedMedia = {
+        images: note.media.filter((m) => m.type === "image"),
+        files: note.media.filter((m) => m.type === "file"),
+        voices: note.media.filter((m) => m.type === "voice"),
+      };
+
+      note.images = organizedMedia.images;
+      note.files = organizedMedia.files;
+      note.voices = organizedMedia.voices;
+      delete note.media;
+    }
+
+    return note;
+  }
+
+  static async updateReminder(noteId, reminder) {
+    let reminderValue = null;
+    if (reminder && reminder.timestamp) {
+      reminderValue = new Date(reminder.timestamp);
+    }
+
+    const query = `
+      UPDATE notes 
+      SET reminder = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, [reminderValue, noteId]);
+    return result.rows[0];
+  }
+
+  static async shareWithCollaborators(noteId, usernames) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Delete existing collaborators
+      await client.query("DELETE FROM collaborators WHERE note_id = $1", [
+        noteId,
+      ]);
+
+      // Insert new collaborators - MENERIMA USERNAMES
+      if (usernames && usernames.length > 0) {
+        for (const username of usernames) {
+          // Cari user ID berdasarkan username
+          const userResult = await client.query(
+            "SELECT id FROM users WHERE username = $1",
+            [username.trim()]
+          );
+
+          if (userResult.rows.length > 0) {
+            const userId = userResult.rows[0].id;
+            await client.query(
+              "INSERT INTO collaborators (note_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+              [noteId, userId]
+            );
+          } else {
+            console.warn(`User "${username}" tidak ditemukan, dilewati`);
+          }
+        }
+      }
+
+      // Update note's updated_at
+      await client.query(
+        "UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [noteId]
+      );
+
+      await client.query("COMMIT");
+
+      return await this.getCompleteNote(noteId);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error sharing note:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async getNotesWithActiveReminders(userId) {
+    const query = `
+      SELECT 
+        n.*,
+        u.username as owner_name,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', ci.id,
+              'text', ci.text,
+              'checked', ci.checked,
+              'position', ci.position
+            )
+          ) FILTER (WHERE ci.id IS NOT NULL),
+          '[]'
+        ) as checklist,
+        COALESCE(
+          array_agg(DISTINCT c.user_id) FILTER (WHERE c.user_id IS NOT NULL),
+          '{}'
+        ) as collaborators
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      WHERE (n.owner_id = $1 OR c.user_id = $1)
+        AND n.reminder IS NOT NULL
+        AND n.reminder > CURRENT_TIMESTAMP
+      GROUP BY n.id, u.username
+      ORDER BY n.reminder ASC
+    `;
+
+    const result = await pool.query(query, [userId]);
+    return result.rows;
+  }
+}
+
+module.exports = Note;
+</file>
+
+<file path="models/User.js">
+const pool = require("../config/db");
+
+class User {
+  static async findByUsername(username) {
+    try {
+      const query = "SELECT * FROM users WHERE username = $1";
+      const result = await pool.query(query, [username]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in findByUsername:", error);
+      throw error;
+    }
+  }
+
+  static async findByEmail(email) {
+    try {
+      const query = "SELECT * FROM users WHERE email = $1";
+      const result = await pool.query(query, [email]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in findByEmail:", error);
+      throw error;
+    }
+  }
+
+  static async findById(id) {
+    try {
+      const query = "SELECT * FROM users WHERE id = $1";
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in findById:", error);
+      throw error;
+    }
+  }
+
+  static async create(username, email, password) {
+    try {
+      const query = `
+        INSERT INTO users (username, email, password)
+        VALUES ($1, $2, $3)
+        RETURNING id, username, email, created_at
+      `;
+      const result = await pool.query(query, [username, email, password]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in User.create:", error);
+      throw error;
+    }
+  }
+
+  static async update(id, data) {
+    try {
+      const fields = [];
+      const values = [];
+      let paramIndex = 1;
+
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) {
+          fields.push(`${key} = $${paramIndex}`);
+          values.push(value);
+          paramIndex++;
+        }
+      }
+
+      if (fields.length === 0) {
+        return await this.findById(id);
+      }
+
+      values.push(id);
+      const query = `
+        UPDATE users 
+        SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $${paramIndex}
+        RETURNING id, username, email, created_at, updated_at
+      `;
+
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in User.update:", error);
+      throw error;
+    }
+  }
+
+  static async delete(id) {
+    try {
+      const query = "DELETE FROM users WHERE id = $1 RETURNING id";
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in User.delete:", error);
+      throw error;
+    }
+  }
+
+  static async getAll() {
+    try {
+      const query =
+        "SELECT id, username, email, created_at, updated_at FROM users ORDER BY username";
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error in User.getAll:", error);
+      throw error;
+    }
+  }
+
+  static async search(searchTerm) {
+    try {
+      const query = `
+        SELECT id, username, email, created_at
+        FROM users 
+        WHERE username ILIKE $1 OR email ILIKE $1
+        ORDER BY username
+        LIMIT 10
+      `;
+      const result = await pool.query(query, [`%${searchTerm}%`]);
+      return result.rows;
+    } catch (error) {
+      console.error("Error in User.search:", error);
+      throw error;
+    }
+  }
+}
+
+module.exports = User;
+</file>
+
+<file path="package.json">
+{
+  "name": "ingetinaja-backend",
+  "version": "1.0.0",
+  "description": "Backend API for IngetinAja notes app",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "setup-db": "node database/setup.js",
+    "reset-db": "node database/reset.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "path": "^0.12.7",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
+</file>
+
+<file path="routes/auth.js">
+const express = require("express");
+const router = express.Router();
+const authController = require("../controllers/authController");
+const authMiddleware = require("../middleware/auth");
+
+// Public routes
+router.post("/register", authController.register);
+router.post("/login", authController.login);
+
+// Protected routes
+router.get("/profile", authMiddleware, authController.getProfile);
+
+// Debug route - hanya untuk development
+router.get("/debug/users", async (req, res) => {
+  try {
+    const pool = require("../config/db");
+    const result = await pool.query(
+      "SELECT id, username, email, created_at FROM users ORDER BY id"
+    );
+    res.json({
+      status: "success",
+      data: result.rows,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+
+module.exports = router;
+</file>
+
+<file path="routes/notes.js">
+const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middleware/auth");
+const { validateNote } = require("../middleware/validation");
+const notesController = require("../controllers/notesController");
+
+// Apply auth middleware to all routes
+router.use(authMiddleware);
+
+// GET /api/notes - Get all notes for current user
+router.get("/", notesController.getAllNotes);
+
+// GET /api/notes/filter/reminder - Get notes with active reminders
+router.get("/filter/reminder", notesController.getNotesWithReminders);
+
+// GET /api/notes/:id - Get note by ID
+router.get("/:id", notesController.getNoteById);
+
+// POST /api/notes - Create new note
+router.post("/", validateNote, notesController.createNote);
+
+// PUT /api/notes/:id - Update note
+router.put("/:id", validateNote, notesController.updateNote);
+
+// DELETE /api/notes/:id - Delete note
+router.delete("/:id", notesController.deleteNote);
+
+// PATCH /api/notes/:id/share - Share note with collaborators
+router.patch("/:id/share", notesController.shareNote);
+
+// PATCH /api/notes/:id/reminder - Update only reminder
+router.patch("/:id/reminder", notesController.updateReminder);
+
+// PATCH /api/notes/:id/share - Share note with collaborators (MENERIMA USERNAMES)
+router.patch("/:id/share", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const { collaborators } = req.body; // Array of usernames
+    
+    console.log("PATCH /share - Request:", {
+      noteId,
+      userId,
+      collaborators,
+      body: req.body
+    });
+
+    // Check if user is the owner of the note
+    const ownerCheck = await pool.query(
+      "SELECT id, owner_id FROM notes WHERE id = $1",
+      [noteId]
+    );
+
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note tidak ditemukan",
+      });
+    }
+
+    const note = ownerCheck.rows[0];
+    
+    if (note.owner_id !== userId) {
+      return res.status(403).json({
+        status: "error",
+        message: "Hanya pemilik note yang dapat membagikan note",
+      });
+    }
+
+    // Delete existing collaborators
+    await pool.query("DELETE FROM collaborators WHERE note_id = $1", [noteId]);
+
+    // Add new collaborators by username
+    if (collaborators && Array.isArray(collaborators) && collaborators.length > 0) {
+      for (const username of collaborators) {
+        if (typeof username === 'string' && username.trim()) {
+          // Find user by username
+          const userResult = await pool.query(
+            "SELECT id FROM users WHERE username = $1",
+            [username.trim()]
+          );
+          
+          if (userResult.rows.length > 0) {
+            const collaboratorId = userResult.rows[0].id;
+            
+            // Skip if trying to add yourself
+            if (collaboratorId !== userId) {
+              await pool.query(
+                "INSERT INTO collaborators (note_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                [noteId, collaboratorId]
+              );
+              console.log(`Added collaborator: ${username} (ID: ${collaboratorId})`);
+            }
+          } else {
+            console.warn(`User not found: ${username}`);
+          }
+        }
+      }
+    }
+
+    // Update note's updated_at
+    await pool.query(
+      "UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [noteId]
+    );
+
+    // Get updated note with collaborators
+    const updatedNote = await pool.query(`
+      SELECT n.*, 
+             json_agg(
+               DISTINCT jsonb_build_object(
+                 'id', u.id,
+                 'username', u.username,
+                 'email', u.email
+               )
+             ) FILTER (WHERE u.id IS NOT NULL) as collaborators
+      FROM notes n
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE n.id = $1
+      GROUP BY n.id
+    `, [noteId]);
+
+    res.json({
+      status: "success",
+      data: updatedNote.rows[0],
+      message: "Note berhasil dibagikan",
+    });
+  } catch (error) {
+    console.error("Share note error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error: " + error.message,
+    });
+  }
+});
+
+// Collaborators endpoints
+// GET /api/notes/:id/collaborators - Get collaborators for a note
+router.get("/:id/collaborators", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    console.log("GET collaborators - Note ID:", noteId, "User ID:", userId);
+
+    // Check if user has access to this note
+    const accessCheck = await pool.query(
+      `SELECT n.id, n.owner_id 
+       FROM notes n 
+       LEFT JOIN collaborators c ON n.id = c.note_id
+       WHERE n.id = $1 AND (n.owner_id = $2 OR c.user_id = $2)`,
+      [noteId, userId]
+    );
+
+    console.log("Access check result:", accessCheck.rows);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note not found or access denied",
+      });
+    }
+
+    // Get collaborators with user info
+    const result = await pool.query(`
+      SELECT u.id, u.username, u.email, c.created_at as shared_at
+      FROM collaborators c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.note_id = $1
+      ORDER BY c.created_at DESC
+    `, [noteId]);
+
+    console.log("Collaborators found:", result.rows);
+
+    res.json({
+      status: "success",
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Get collaborators error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error: " + error.message,
+    });
+  }
+});
+
+// POST /api/notes/:id/collaborators - Add collaborator to note
+router.post("/:id/collaborators", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const { collaboratorUsername } = req.body; // Terima username, bukan ID
+    const pool = require("../config/db");
+
+    console.log("POST /api/notes/:id/collaborators - Request body:", req.body);
+    console.log("Note ID:", noteId, "User ID:", userId, "Collaborator Username:", collaboratorUsername);
+
+    if (!collaboratorUsername || collaboratorUsername.trim() === "") {
+      return res.status(400).json({
+        status: "error",
+        message: "Username kolaborator harus diisi",
+      });
+    }
+
+    // Check if user is the owner of the note
+    const ownerCheck = await pool.query(
+      "SELECT id, owner_id FROM notes WHERE id = $1",
+      [noteId]
+    );
+
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note tidak ditemukan",
+      });
+    }
+
+    const note = ownerCheck.rows[0];
+    
+    // Cek apakah user adalah owner note
+    if (note.owner_id !== userId) {
+      return res.status(403).json({
+        status: "error",
+        message: "Hanya pemilik note yang dapat menambahkan kolaborator",
+      });
+    }
+
+    // Find the collaborator user by USERNAME (bukan ID)
+    const collaboratorResult = await pool.query(
+      "SELECT id, username, email FROM users WHERE username = $1",
+      [collaboratorUsername.trim()]
+    );
+
+    if (collaboratorResult.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: `User dengan username "${collaboratorUsername}" tidak ditemukan`,
+      });
+    }
+
+    const collaborator = collaboratorResult.rows[0];
+    const collaboratorId = collaborator.id;
+
+    console.log("Found collaborator:", collaborator);
+
+    // Check if user is trying to add themselves
+    if (collaboratorId === userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Tidak dapat menambahkan diri sendiri sebagai kolaborator",
+      });
+    }
+
+    // Check if collaborator already exists
+    const existingCheck = await pool.query(
+      "SELECT id FROM collaborators WHERE note_id = $1 AND user_id = $2",
+      [noteId, collaboratorId]
+    );
+
+    if (existingCheck.rows.length > 0) {
+      return res.status(409).json({
+        status: "error",
+        message: "User sudah menjadi kolaborator",
+      });
+    }
+
+    // Add collaborator
+    await pool.query(
+      "INSERT INTO collaborators (note_id, user_id) VALUES ($1, $2)",
+      [noteId, collaboratorId]
+    );
+
+    // Update note's updated_at
+    await pool.query(
+      "UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [noteId]
+    );
+
+    res.status(201).json({
+      status: "success",
+      data: {
+        id: collaborator.id,
+        username: collaborator.username,
+        email: collaborator.email,
+      },
+      message: `Berhasil menambahkan ${collaborator.username} sebagai kolaborator`,
+    });
+  } catch (error) {
+    console.error("Add collaborator error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error: " + error.message,
+    });
+  }
+});
+// DELETE /api/notes/:id/collaborators/:userId - Remove collaborator
+router.delete("/:id/collaborators/:collaboratorId", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const collaboratorId = parseInt(req.params.collaboratorId);
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    // Check if user is the owner of the note
+    const ownerCheck = await pool.query(
+      "SELECT id FROM notes WHERE id = $1 AND owner_id = $2",
+      [noteId, userId]
+    );
+
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({
+        status: "error",
+        message: "Only note owner can remove collaborators",
+      });
+    }
+
+    // Remove collaborator
+    const result = await pool.query(
+      "DELETE FROM collaborators WHERE note_id = $1 AND user_id = $2 RETURNING id",
+      [noteId, collaboratorId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Collaborator not found",
+      });
+    }
+
+    res.json({
+      status: "success",
+      message: "Collaborator removed successfully",
+    });
+  } catch (error) {
+    console.error("Remove collaborator error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
+
+// Debug endpoint untuk mendapatkan semua users (hanya untuk development)
+router.get("/debug/users", async (req, res) => {
+  try {
+    const pool = require("../config/db");
+    const result = await pool.query(
+      "SELECT id, username, email, created_at FROM users ORDER BY username"
+    );
+    
+    res.json({
+      status: "success",
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Debug users error:", error);
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+module.exports = router;
+</file>
+
+<file path="routes/upload.js">
+const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middleware/auth");
+
+// Apply auth middleware ke semua routes notes
+router.use(authMiddleware);
+
+// GET /api/notes - Get all notes for current user
+router.get("/", async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    const result = await pool.query(
+      `
+      SELECT n.*, 
+             COALESCE(
+               json_agg(
+                 DISTINCT jsonb_build_object(
+                   'id', ci.id,
+                   'text', ci.text,
+                   'checked', ci.checked,
+                   'position', ci.position
+                 )
+               ) FILTER (WHERE ci.id IS NOT NULL),
+               '[]'
+             ) as checklist,
+             COALESCE(
+               array_agg(DISTINCT c.user_id) FILTER (WHERE c.user_id IS NOT NULL),
+               '{}'
+             ) as collaborators,
+             COALESCE(
+               json_agg(
+                 DISTINCT jsonb_build_object(
+                   'id', m.id,
+                   'type', m.type,
+                   'filename', m.filename,
+                   'original_name', m.original_name,
+                   'mime_type', m.mime_type,
+                   'file_size', m.file_size,
+                   'file_path', m.file_path
+                 )
+               ) FILTER (WHERE m.id IS NOT NULL),
+               '[]'
+             ) as media,
+             u.username as owner_name
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      LEFT JOIN media m ON n.id = m.note_id
+      WHERE n.owner_id = $1 OR c.user_id = $1
+      GROUP BY n.id, u.username
+      ORDER BY n.updated_at DESC
+    `,
+      [userId]
+    );
+
+    // Organize media by type
+    const organizedNotes = result.rows.map((note) => {
+      if (note.media) {
+        const images = note.media.filter((m) => m.type === "image");
+        const files = note.media.filter((m) => m.type === "file");
+        const voices = note.media.filter((m) => m.type === "voice");
+
+        return {
+          ...note,
+          images,
+          files,
+          voices,
+        };
+      }
+      return note;
+    });
+
+    res.json({
+      status: "success",
+      data: organizedNotes,
+    });
+  } catch (error) {
+    console.error("Get all notes error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
+
+// GET /api/notes/:id - Get note by ID
+router.get("/:id", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    const result = await pool.query(
+      `
+      SELECT n.*, 
+             COALESCE(
+               json_agg(
+                 DISTINCT jsonb_build_object(
+                   'id', ci.id,
+                   'text', ci.text,
+                   'checked', ci.checked,
+                   'position', ci.position
+                 )
+               ) FILTER (WHERE ci.id IS NOT NULL),
+               '[]'
+             ) as checklist,
+             COALESCE(
+               array_agg(DISTINCT c.user_id) FILTER (WHERE c.user_id IS NOT NULL),
+               '{}'
+             ) as collaborators,
+             COALESCE(
+               json_agg(
+                 DISTINCT jsonb_build_object(
+                   'id', m.id,
+                   'type', m.type,
+                   'filename', m.filename,
+                   'original_name', m.original_name,
+                   'mime_type', m.mime_type,
+                   'file_size', m.file_size,
+                   'file_path', m.file_path
+                 )
+               ) FILTER (WHERE m.id IS NOT NULL),
+               '[]'
+             ) as media,
+             u.username as owner_name
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      LEFT JOIN collaborators c ON n.id = c.note_id
+      LEFT JOIN media m ON n.id = m.note_id
+      WHERE n.id = $1 AND (n.owner_id = $2 OR c.user_id = $2)
+      GROUP BY n.id, u.username
+    `,
+      [noteId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note not found or access denied",
+      });
+    }
+
+    const note = result.rows[0];
+
+    // Organize media
+    if (note.media) {
+      const images = note.media.filter((m) => m.type === "image");
+      const files = note.media.filter((m) => m.type === "file");
+      const voices = note.media.filter((m) => m.type === "voice");
+
+      note.images = images;
+      note.files = files;
+      note.voices = voices;
+      delete note.media;
+    }
+
+    res.json({
+      status: "success",
+      data: note,
+    });
+  } catch (error) {
+    console.error("Get note by ID error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
+
+// POST /api/notes - Create new note
+router.post("/", async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      title,
+      text,
+      checklist,
+      images,
+      files,
+      voices,
+      reminder,
+      collaborators,
+    } = req.body;
+    const pool = require("../config/db");
+
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      // Insert note
+      const noteResult = await client.query(
+        `
+        INSERT INTO notes (owner_id, title, text, reminder)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `,
+        [userId, title || "", text || "", reminder]
+      );
+
+      const note = noteResult.rows[0];
+
+      // Insert checklist items
+      if (checklist && checklist.length > 0) {
+        for (const [index, item] of checklist.entries()) {
+          await client.query(
+            "INSERT INTO checklist_items (note_id, text, checked, position) VALUES ($1, $2, $3, $4)",
+            [note.id, item.text || "", item.checked || false, index]
+          );
+        }
+      }
+
+      // Insert media (images)
+      if (images && images.length > 0) {
+        for (const image of images) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'image', $2, $3, $4, $5, $6)`,
+            [
+              note.id,
+              image.filename,
+              image.originalName,
+              image.mimetype,
+              image.size,
+              image.path,
+            ]
+          );
+        }
+      }
+
+      // Insert media (files)
+      if (files && files.length > 0) {
+        for (const file of files) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'file', $2, $3, $4, $5, $6)`,
+            [
+              note.id,
+              file.filename,
+              file.originalName,
+              file.mimetype,
+              file.size,
+              file.path,
+            ]
+          );
+        }
+      }
+
+      // Insert media (voices)
+      if (voices && voices.length > 0) {
+        for (const voice of voices) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'voice', $2, $3, $4, $5, $6)`,
+            [
+              note.id,
+              voice.filename,
+              voice.originalName,
+              voice.mimetype,
+              voice.size,
+              voice.path,
+            ]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+
+      // Return the created note
+      const finalResult = await client.query(
+        `
+        SELECT n.*, 
+               COALESCE(
+                 json_agg(
+                   DISTINCT jsonb_build_object(
+                     'id', ci.id,
+                     'text', ci.text,
+                     'checked', ci.checked,
+                     'position', ci.position
+                   )
+                 ) FILTER (WHERE ci.id IS NOT NULL),
+                 '[]'
+               ) as checklist,
+               u.username as owner_name
+        FROM notes n
+        LEFT JOIN users u ON n.owner_id = u.id
+        LEFT JOIN checklist_items ci ON n.id = ci.note_id
+        WHERE n.id = $1
+        GROUP BY n.id, u.username
+      `,
+        [note.id]
+      );
+
+      res.status(201).json({
+        status: "success",
+        data: finalResult.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("Create note error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error: " + error.message,
+    });
+  }
+});
+
+// PUT /api/notes/:id - Update note
+router.put("/:id", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const {
+      title,
+      text,
+      checklist,
+      images,
+      files,
+      voices,
+      reminder,
+      collaborators,
+    } = req.body;
+    const pool = require("../config/db");
+
+    // Check if user has access to this note
+    const accessCheck = await pool.query(
+      "SELECT id FROM notes WHERE id = $1 AND owner_id = $2",
+      [noteId, userId]
+    );
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note not found or access denied",
+      });
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      // Update note
+      await client.query(
+        `
+        UPDATE notes 
+        SET title = $1, text = $2, reminder = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `,
+        [title || "", text || "", reminder, noteId]
+      );
+
+      // Delete existing checklist items
+      await client.query("DELETE FROM checklist_items WHERE note_id = $1", [
+        noteId,
+      ]);
+
+      // Insert new checklist items
+      if (checklist && checklist.length > 0) {
+        for (const [index, item] of checklist.entries()) {
+          await client.query(
+            "INSERT INTO checklist_items (note_id, text, checked, position) VALUES ($1, $2, $3, $4)",
+            [noteId, item.text || "", item.checked || false, index]
+          );
+        }
+      }
+
+      // Delete existing media
+      await client.query("DELETE FROM media WHERE note_id = $1", [noteId]);
+
+      // Insert new media (images)
+      if (images && images.length > 0) {
+        for (const image of images) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'image', $2, $3, $4, $5, $6)`,
+            [
+              noteId,
+              image.filename,
+              image.originalName,
+              image.mimetype,
+              image.size,
+              image.path,
+            ]
+          );
+        }
+      }
+
+      // Insert new media (files)
+      if (files && files.length > 0) {
+        for (const file of files) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'file', $2, $3, $4, $5, $6)`,
+            [
+              noteId,
+              file.filename,
+              file.originalName,
+              file.mimetype,
+              file.size,
+              file.path,
+            ]
+          );
+        }
+      }
+
+      // Insert new media (voices)
+      if (voices && voices.length > 0) {
+        for (const voice of voices) {
+          await client.query(
+            `INSERT INTO media (note_id, type, filename, original_name, mime_type, file_size, file_path)
+             VALUES ($1, 'voice', $2, $3, $4, $5, $6)`,
+            [
+              noteId,
+              voice.filename,
+              voice.originalName,
+              voice.mimetype,
+              voice.size,
+              voice.path,
+            ]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+
+      // Return the updated note
+      const finalResult = await client.query(
+        `
+        SELECT n.*, 
+               COALESCE(
+                 json_agg(
+                   DISTINCT jsonb_build_object(
+                     'id', ci.id,
+                     'text', ci.text,
+                     'checked', ci.checked,
+                     'position', ci.position
+                   )
+                 ) FILTER (WHERE ci.id IS NOT NULL),
+                 '[]'
+               ) as checklist,
+               u.username as owner_name
+        FROM notes n
+        LEFT JOIN users u ON n.owner_id = u.id
+        LEFT JOIN checklist_items ci ON n.id = ci.note_id
+        WHERE n.id = $1
+        GROUP BY n.id, u.username
+      `,
+        [noteId]
+      );
+
+      res.json({
+        status: "success",
+        data: finalResult.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("Update note error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error: " + error.message,
+    });
+  }
+});
+
+// DELETE /api/notes/:id - Delete note
+router.delete("/:id", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    // Check if user has access to this note
+    const accessCheck = await pool.query(
+      "SELECT id FROM notes WHERE id = $1 AND owner_id = $2",
+      [noteId, userId]
+    );
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Note not found or access denied",
+      });
+    }
+
+    // Delete the note (cascade will handle related records)
+    await pool.query("DELETE FROM notes WHERE id = $1", [noteId]);
+
+    res.json({
+      status: "success",
+      message: "Note deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete note error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
+
+// GET /api/notes/filter/reminder - Get notes with active reminders
+router.get("/filter/reminder", async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const pool = require("../config/db");
+
+    const result = await pool.query(
+      `
+      SELECT n.*, 
+             COALESCE(
+               json_agg(
+                 DISTINCT jsonb_build_object(
+                   'id', ci.id,
+                   'text', ci.text,
+                   'checked', ci.checked,
+                   'position', ci.position
+                 )
+               ) FILTER (WHERE ci.id IS NOT NULL),
+               '[]'
+             ) as checklist,
+             u.username as owner_name
+      FROM notes n
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN checklist_items ci ON n.id = ci.note_id
+      WHERE n.owner_id = $1 
+        AND n.reminder IS NOT NULL
+        AND n.reminder > CURRENT_TIMESTAMP
+      GROUP BY n.id, u.username
+      ORDER BY n.reminder ASC
+    `,
+      [userId]
+    );
+
+    res.json({
+      status: "success",
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Get notes with reminders error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
+
+module.exports = router;
+</file>
+
+<file path="routes/users.js">
+const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middleware/auth");
+const usersController = require("../controllers/usersController");
+
+// Apply auth middleware to all routes
+router.use(authMiddleware);
+
+// GET /api/users - Get all users (for admin/search)
+router.get("/", usersController.getAllUsers);
+
+// GET /api/users/search - Search users
+router.get("/search", usersController.searchUsers);
+
+// GET /api/users/:id - Get user by ID
+router.get("/:id", usersController.getUserById);
+
+// PUT /api/users/:id - Update user
+router.put("/:id", usersController.updateUser);
+
+// DELETE /api/users/:id - Delete user
+router.delete("/:id", usersController.deleteUser);
+
+module.exports = router;
+</file>
+
+<file path="services/authService.js">
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+
+class AuthService {
+  async register(username, email, password) {
+    try {
+      // Check if user exists
+      const existingUser = await User.findByUsername(username);
+      if (existingUser) {
+        throw new Error("Username sudah digunakan");
+      }
+
+      const existingEmail = await User.findByEmail(email);
+      if (existingEmail) {
+        throw new Error("Email sudah terdaftar");
+      }
+
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Create user in database
+      const user = await User.create(username, email, hashedPassword);
+
+      // Generate token
+      const token = this.generateToken(user);
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          created_at: user.created_at,
+        },
+        token,
+      };
+    } catch (error) {
+      console.error("Registration error:", error);
+      throw error;
+    }
+  }
+
+  async login(username, password) {
+    try {
+      // Find user by username
+      let user = await User.findByUsername(username);
+
+      // If not found by username, try email
+      if (!user) {
+        user = await User.findByEmail(username);
+      }
+
+      if (!user) {
+        throw new Error("Username atau password salah");
+      }
+
+      // Check password - PASTIKAN menggunakan await untuk bcrypt.compare
+      const isMatch = await bcrypt.compare(password, user.password);
+
+      if (!isMatch) {
+        throw new Error("Username atau password salah");
+      }
+
+      // Generate token
+      const token = this.generateToken(user);
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          created_at: user.created_at,
+        },
+        token,
+      };
+    } catch (error) {
+      console.error("Login error:", error);
+      throw error;
+    }
+  }
+
+  generateToken(user) {
+    const payload = {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      },
+    };
+
+    return jwt.sign(payload, process.env.JWT_SECRET || "your_jwt_secret", {
+      expiresIn: "7d",
+    });
+  }
+
+  async getUserById(userId) {
+    return await User.findById(userId);
+  }
+
+  async updateUser(userId, updateData) {
+    // If password is being updated, hash it
+    if (updateData.password) {
+      const salt = await bcrypt.genSalt(10);
+      updateData.password = await bcrypt.hash(updateData.password, salt);
+    }
+
+    return await User.update(userId, updateData);
+  }
+
+  async deleteUser(userId) {
+    return await User.delete(userId);
+  }
+}
+
+module.exports = new AuthService();
+</file>
+
+<file path="services/notesService.js">
+const pool = require("../config/db");
+const Note = require("../models/Note");
+
+class NotesService {
+  async getAllUserNotes(userId) {
+    try {
+      return await Note.findAllByUser(userId);
+    } catch (error) {
+      console.error("Error getting all notes:", error);
+      throw error;
+    }
+  }
+
+  async createNote(noteData) {
+    try {
+      return await Note.create(noteData.owner_id, noteData);
+    } catch (error) {
+      console.error("Error creating note:", error);
+      throw error;
+    }
+  }
+
+  async getNoteById(noteId, userId) {
+    try {
+      // First check if user has access
+      const userNotes = await Note.findAllByUser(userId);
+      const hasAccess = userNotes.some((note) => note.id === noteId);
+
+      if (!hasAccess) {
+        throw new Error("Note not found or access denied");
+      }
+
+      return await Note.getCompleteNote(noteId);
+    } catch (error) {
+      console.error("Error getting note:", error);
+      throw error;
+    }
+  }
+
+  async updateNote(noteId, noteData) {
+    try {
+      return await Note.update(noteId, noteData);
+    } catch (error) {
+      console.error("Error updating note:", error);
+      throw error;
+    }
+  }
+
+  async deleteNote(noteId) {
+    try {
+      return await Note.delete(noteId);
+    } catch (error) {
+      console.error("Error deleting note:", error);
+      throw error;
+    }
+  }
+
+  async getNotesWithReminders(userId) {
+    try {
+      return await Note.getNotesWithActiveReminders(userId);
+    } catch (error) {
+      console.error("Error getting notes with reminders:", error);
+      throw error;
+    }
+  }
+}
+
+module.exports = new NotesService();
+</file>
+
+<file path="services/usersService.js">
+const pool = require("../config/db");
+
+class UsersService {
+  async searchUsers(query) {
+    try {
+      const result = await pool.query(
+        `SELECT id, username, email, created_at 
+         FROM users 
+         WHERE username ILIKE $1 OR email ILIKE $1
+         ORDER BY username
+         LIMIT 10`,
+        [`%${query}%`]
+      );
+      return result.rows;
+    } catch (error) {
+      console.error("Search users error:", error);
+      throw error;
+    }
+  }
+
+  async getUserById(id) {
+    try {
+      const result = await pool.query(
+        "SELECT id, username, email, created_at FROM users WHERE id = $1",
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      console.error("Get user by ID error:", error);
+      throw error;
+    }
+  }
+
+  async getUserByUsername(username) {
+    try {
+      const result = await pool.query(
+        "SELECT id, username, email, created_at FROM users WHERE username = $1",
+        [username]
+      );
+      return result.rows[0];
+    } catch (error) {
+      console.error("Get user by username error:", error);
+      throw error;
+    }
+  }
+}
+
+module.exports = new UsersService();
+</file>
+
+<file path="uploads/files/1764228782154-752314448.txt">
+https://drive.google.com/file/d/1Chu3N2FpzSSrAeRHkaTlxgEZ3sgchWtn/view?usp=sharing
+</file>
+
+<file path="utils/helpers.js">
+const path = require("path");
+const fs = require("fs");
+
+class Helpers {
+  static formatDate(date) {
+    if (!date) return "";
+
+    try {
+      const dateObj = new Date(date);
+      if (isNaN(dateObj.getTime())) return "";
+
+      return dateObj.toLocaleString("id-ID", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "";
+    }
+  }
+
+  static formatFileSize(bytes) {
+    if (bytes === 0) return "0 Bytes";
+
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  static getFileExtension(filename) {
+    return path.extname(filename).toLowerCase();
+  }
+
+  static isImageFile(filename) {
+    const ext = this.getFileExtension(filename);
+    return [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext);
+  }
+
+  static isAudioFile(filename) {
+    const ext = this.getFileExtension(filename);
+    return [".mp3", ".wav", ".ogg", ".webm", ".m4a"].includes(ext);
+  }
+
+  static isDocumentFile(filename) {
+    const ext = this.getFileExtension(filename);
+    return [".pdf", ".doc", ".docx", ".txt", ".rtf"].includes(ext);
+  }
+
+  static generateRandomString(length = 10) {
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let result = "";
+
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    return result;
+  }
+
+  static sanitizeFilename(filename) {
+    // Remove special characters and replace spaces with underscores
+    return filename
+      .replace(/[^\w\s.-]/gi, "")
+      .replace(/\s+/g, "_")
+      .toLowerCase();
+  }
+
+  static ensureDirectoryExists(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  }
+
+  static validateEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  static validatePassword(password) {
+    // At least 6 characters
+    return password.length >= 6;
+  }
+
+  static parseReminderData(reminder) {
+    if (!reminder) return null;
+
+    try {
+      let timestamp;
+
+      if (reminder.timestamp) {
+        timestamp = reminder.timestamp;
+      } else if (reminder.date && reminder.time) {
+        const dateTimeString = `${reminder.date}T${reminder.time}`;
+        const date = new Date(dateTimeString);
+        timestamp = date.getTime();
+      } else if (typeof reminder === "string") {
+        const date = new Date(reminder);
+        timestamp = date.getTime();
+      } else {
+        return null;
+      }
+
+      // Validate timestamp
+      if (isNaN(timestamp) || timestamp <= Date.now()) {
+        return null;
+      }
+
+      const date = new Date(timestamp);
+
+      return {
+        timestamp,
+        date: date.toISOString().split("T")[0],
+        time: date.toTimeString().split(" ")[0].substring(0, 5),
+        isoString: date.toISOString(),
+      };
+    } catch (error) {
+      console.error("Error parsing reminder:", error);
+      return null;
+    }
+  }
+
+  static calculateChecklistProgress(checklist) {
+    if (!checklist || checklist.length === 0) {
+      return 0;
+    }
+
+    const completed = checklist.filter((item) => item.checked).length;
+    const total = checklist.length;
+
+    return Math.round((completed / total) * 100);
+  }
+}
+
+module.exports = Helpers;
+</file>
+
+<file path="utils/respons.js">
+class ResponseHelper {
+  static success(res, data, message = "Success", statusCode = 200) {
+    return res.status(statusCode).json({
+      status: "success",
+      message,
+      data,
+    });
+  }
+
+  static created(res, data, message = "Created successfully") {
+    return res.status(201).json({
+      status: "success",
+      message,
+      data,
+    });
+  }
+
+  static error(
+    res,
+    message = "An error occurred",
+    statusCode = 500,
+    errors = null
+  ) {
+    const response = {
+      status: "error",
+      message,
+    };
+
+    if (errors) {
+      response.errors = errors;
+    }
+
+    return res.status(statusCode).json(response);
+  }
+
+  static notFound(res, message = "Resource not found") {
+    return this.error(res, message, 404);
+  }
+
+  static unauthorized(res, message = "Unauthorized access") {
+    return this.error(res, message, 401);
+  }
+
+  static forbidden(res, message = "Forbidden access") {
+    return this.error(res, message, 403);
+  }
+
+  static badRequest(res, message = "Bad request", errors = null) {
+    return this.error(res, message, 400, errors);
+  }
+
+  static validationError(res, errors) {
+    return this.error(res, "Validation error", 422, errors);
+  }
+
+  static conflict(res, message = "Resource already exists") {
+    return this.error(res, message, 409);
+  }
+
+  // Pagination response
+  static paginated(res, data, pagination, message = "Success") {
+    return res.status(200).json({
+      status: "success",
+      message,
+      data,
+      pagination,
+    });
+  }
+}
+
+module.exports = ResponseHelper;
+</file>
+
+</files>
