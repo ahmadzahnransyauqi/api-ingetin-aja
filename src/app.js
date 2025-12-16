@@ -11,26 +11,24 @@ const notificationRoutes = require("./routes/notification.routes");
 
 const app = express();
 
-
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:3000", 
-
+  "http://localhost:3000",
   process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : ""
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-   
+    
       if (!origin) return callback(null, true);
       
       if (allowedOrigins.indexOf(origin) === -1) {
-      
+        
         const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
         return callback(new Error(msg), false);
       }
-     
+      
       return callback(null, true);
     },
     credentials: true,
@@ -42,7 +40,6 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 app.get("/", (req, res) => {
   res.json({ message: "Server IngetinAja is running on Vercel!" });
@@ -71,7 +68,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-
 app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
@@ -88,7 +84,6 @@ const startServer = async () => {
       console.error("⚠️ Database Error (Server tetap jalan):", err.message);
     });
     
-   
     if (process.env.NODE_ENV !== 'production') {
       app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
@@ -96,7 +91,7 @@ const startServer = async () => {
     }
   } catch (error) {
     console.error("❌ Failed to start server:", error);
-
+    
   }
 };
 
