@@ -1,8 +1,12 @@
+const pg = require("pg");
 const { Sequelize } = require("sequelize");
 require("dotenv").config();
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
+
+  dialectModule: pg, 
+  
   protocol: "postgres",
   logging: false,
   dialectOptions: {
@@ -22,9 +26,9 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ Database connection established successfully.");
+    console.log("✅ Dadb nyambung coy");
   } catch (error) {
-    console.error("❌ Unable to connect to the database:", error);
+    console.error("❌ Uperiksa ulang njir", error);
   }
 };
 
