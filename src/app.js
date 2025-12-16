@@ -11,19 +11,14 @@ const notificationRoutes = require("./routes/notification.routes");
 
 const app = express();
 
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-
-      return callback(null, true);
-    },
+    origin: (_, callback) => callback(null, true),
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
-
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -60,12 +55,11 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-
-    await initDatabase().catch(err => {
+    await initDatabase().catch((err) => {
       console.error("⚠️ Database Error (Server tetap jalan):", err.message);
     });
-    
-    if (process.env.NODE_ENV !== 'production') {
+
+    if (process.env.NODE_ENV !== "production") {
       app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
       });
