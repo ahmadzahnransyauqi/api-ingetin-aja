@@ -3,18 +3,14 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const { initDatabase } = require("./models");
 
-// Load environment variables
 dotenv.config();
 
-// Import routes
 const authRoutes = require("./routes/auth.routes");
 const taskRoutes = require("./routes/task.routes");
 const notificationRoutes = require("./routes/notification.routes");
 
-// Initialize Express app
 const app = express();
 
-// Middleware
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -24,7 +20,10 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+app.get("/", (req, res) => {
+  res.json({ message: "Server IngetinAja is running successfully!" });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
@@ -33,14 +32,12 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
 
-// Error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Global error handler:", err);
+  console.error(err);
   res.status(500).json({
     success: false,
     message: "Internal server error",
@@ -48,7 +45,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
 app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
@@ -56,24 +52,22 @@ app.use("*", (req, res) => {
   });
 });
 
-// Start server
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    // Initialize database
     await initDatabase();
-
-    app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
-    });
+    
+    if (process.env.NODE_ENV !== 'production') {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    }
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
+    console.error(error);
   }
 };
 
 startServer();
 
-module.exports = app; // Export for Vercel
+module.exports = app;
