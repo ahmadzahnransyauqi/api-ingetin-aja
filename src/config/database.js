@@ -4,21 +4,24 @@ require("dotenv").config();
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
-
-  dialectModule: pg, 
-  
+  dialectModule: pg,
   protocol: "postgres",
   logging: false,
+  
   dialectOptions: {
+ 
     ssl: {
       require: true,
       rejectUnauthorized: false,
     },
+   
+    connectionTimeoutMillis: 30000, 
   },
+ 
   pool: {
-    max: 5,
+    max: 2,
     min: 0,
-    acquire: 30000,
+    acquire: 60000,
     idle: 10000,
   },
 });
@@ -26,9 +29,9 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ Dadb nyambung coy");
+    console.log("✅ Database connection established successfully.");
   } catch (error) {
-    console.error("❌ Uperiksa ulang njir", error);
+    console.error("❌ Unable to connect to the database:", error);
   }
 };
 
