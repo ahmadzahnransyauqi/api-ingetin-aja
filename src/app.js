@@ -21,15 +21,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.json({ message: "Server IngetinAja is running successfully!" });
+  res.json({ message: "Server IngetinAja is running on Vercel!" });
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    service: "IngetinAja API",
-  });
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
 app.use("/api/auth", authRoutes);
@@ -37,34 +33,30 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({
-    success: false,
-    message: "Internal server error",
-    error: process.env.NODE_ENV === "development" ? err.message : undefined,
-  });
+  console.error("Global Error:", err);
+  res.status(500).json({ success: false, message: "Internal server error" });
 });
 
-app.use("*", (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Endpoint not found",
-  });
-});
+app.use("*", (req, res) => res.status(404).json({ message: "Endpoint not found" }));
+
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    await initDatabase();
-    
+
+    await initDatabase().catch(err => {
+      console.error("⚠️ Database Error (Server tetap jalan):", err.message);
+    });
+
     if (process.env.NODE_ENV !== 'production') {
       app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
       });
     }
   } catch (error) {
-    console.error(error);
+    console.error("❌ Failed to start server:", error);
+
   }
 };
 

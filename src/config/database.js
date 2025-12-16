@@ -2,42 +2,29 @@ const pg = require("pg");
 const { Sequelize } = require("sequelize");
 require("dotenv").config();
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+
+let connectionString = process.env.DATABASE_URL;
+if (connectionString && connectionString.includes('?')) {
+  connectionString = connectionString.split('?')[0];
+}
+
+const sequelize = new Sequelize(connectionString, {
   dialect: "postgres",
   dialectModule: pg,
   logging: false,
-  
   dialectOptions: {
-
     ssl: {
       require: true,
       rejectUnauthorized: false,
     },
-
-    connectionTimeoutMillis: 60000, 
-  
-    keepAlive: true, 
+    connectionTimeoutMillis: 10000, 
   },
-
   pool: {
-  
-    max: 1, 
+    max: 1,
     min: 0,
-    acquire: 60000,
-    idle: 10000,
+    acquire: 30000,
+    idle: 5000,
   },
 });
-
-const testConnection = async () => {
-  try {
-    console.log("⏳ Mencoba koneksi ke database...");
-    await sequelize.authenticate();
-    console.log("✅ Database connection established successfully.");
-  } catch (error) {
-    console.error("❌ Unable to connect to the database:", error.message);
-  }
-};
-
-testConnection();
 
 module.exports = sequelize;
