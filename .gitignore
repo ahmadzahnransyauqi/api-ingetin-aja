@@ -1,27 +1,28 @@
+# Dependencies
 node_modules/
+/.env
+
+# Environment - SANGAT PENTING!
 .env
-uploads/
+.env.local
+*.env
+
 # Logs
-logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Database files (jika menggunakan SQLite)
+*.db
+*.sqlite
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Uploads
+uploads/
+temp/
+
+# System
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
