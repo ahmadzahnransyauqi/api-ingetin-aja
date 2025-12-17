@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "ingetinaja-backend",
   "version": "1.0.0",
   "description": "Backend API for IngetinAja Task Manager",
@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "migrate": "node src/config/migrate.js"
+    "vercel-build": "npm install && npm list pg || npm install pg@8.11.3 pg-hstore@2.3.4"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -70,8 +70,9 @@ const validateTask = [
   },
 ];
 
+// Export sebagai objek
 module.exports = {
   validateRegistration,
   validateLogin,
-  validateTask,
+  validateTask
 };

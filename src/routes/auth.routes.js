@@ -1,15 +1,16 @@
 const express = require("express");
-const router = express.Router();
-const authController = require("../controllers/authController");
-const { protect } = require("../middleware/auth");
-const {
-  validateRegistration,
-  validateLogin,
-} = require("../middleware/validation");
+const router = express.Router(); // <-- Ini penting!
 
-router.post("/register", validateRegistration, authController.register);
-router.post("/login", validateLogin, authController.login);
-router.get("/me", protect, authController.getCurrentUser);
-router.post("/logout", protect, authController.logout);
+// Debug
+console.log("🔧 auth.routes.js loaded");
 
-module.exports = router;
+// Test route sederhana
+router.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Auth API is working"
+  });
+});
+
+// Pastikan export router
+module.exports = router; // <-- Export router, bukan objek

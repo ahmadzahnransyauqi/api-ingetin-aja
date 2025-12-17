@@ -1,0 +1,7 @@
+﻿{
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "vercel-build": "npm ci --only=production && npm cache clean --force"
+  }
+}

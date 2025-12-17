@@ -1,10 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const notificationController = require("../controllers/notificationController");
-const { protect } = require("../middleware/auth");
 
-router.use(protect);
+console.log("🔧 notification.routes.js loaded");
 
-router.get("/", notificationController.getNotifications);
+router.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Notifications API is working"
+  });
+});
 
 module.exports = router;

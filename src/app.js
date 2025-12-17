@@ -1,129 +1,148 @@
-const express = require("express");
+﻿const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
-const { initDatabase } = require("./models");
+const path = require("path");
 
-dotenv.config();
-
-const authRoutes = require("./routes/auth.routes");
-const taskRoutes = require("./routes/task.routes");
-const notificationRoutes = require("./routes/notification.routes");
+// Load .env from root directory
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const app = express();
 
-// Middleware CORS
-app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-}));
-
+// Middleware
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+// Database connection test
+let dbConnected = false;
+
+const testDatabase = async () => {
+  try {
+    console.log("🔌 Testing database connection...");
+    console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
+    
+    if (process.env.DATABASE_URL) {
+      const { Sequelize } = require("sequelize");
+      
+      // Mask password in logs
+      const maskedUrl = process.env.DATABASE_URL.replace(/:([^:@]*)@/, ':****@');
+      console.log("Connecting to:", maskedUrl);
+      
+      const sequelize = new Sequelize(process.env.DATABASE_URL, {
+        dialect: "postgres",
+        dialectOptions: { 
+          ssl: { 
+            require: true, 
+            rejectUnauthorized: false 
+          } 
+        },
+        logging: false,
+        pool: {
+          max: 2,
+          min: 0,
+          acquire: 10000,
+          idle: 5000
+        }
+      });
+      
+      await sequelize.authenticate();
+      console.log("✅ Database authenticated");
+      
+      // Test query
+      const [result] = await sequelize.query("SELECT version() as version");
+      console.log("PostgreSQL Version:", result[0]?.version?.split(' ')[1]);
+      
+      await sequelize.close();
+      dbConnected = true;
+      console.log("✅ Database connected successfully");
+    } else {
+      console.log("⚠️ DATABASE_URL not found in environment");
+    }
+  } catch (error) {
+    console.error("❌ Database connection failed:", error.message);
+    dbConnected = false;
+  }
+};
+
+// Test database on startup
+testDatabase();
+
+// Basic route
 app.get("/", (req, res) => {
   res.json({ 
-    message: "Server IngetinAja is running!",
-    status: "healthy",
+    message: "IngetinAja API v1.0", 
+    status: "online",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-    database: "Neon PostgreSQL"
+    database: dbConnected ? "connected" : "disconnected",
+    env: process.env.NODE_ENV || "development"
   });
 });
 
+// Health check with real database status
 app.get("/api/health", async (req, res) => {
-  try {
-    const { sequelize } = require("./models");
-    await sequelize.authenticate();
-    
-    // Cek jumlah tabel
-    const [tables] = await sequelize.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-      AND table_type = 'BASE TABLE'
-    `);
-    
-    res.json({
-      status: "healthy",
-      database: "connected",
-      tables: tables.length,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "unhealthy",
-      database: "disconnected",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-  }
+  res.json({ 
+    status: "healthy",
+    database: dbConnected ? "connected" : "disconnected",
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/tasks", taskRoutes);
-app.use("/api/notifications", notificationRoutes);
+// ===== LOAD API ROUTES =====
+console.log("\n🔧 Loading API routes...");
 
-// Error handling middleware
+try {
+  const authRoutes = require("./routes/auth");
+  app.use("/api/auth", authRoutes);
+  console.log("✅ Auth routes loaded");
+} catch (error) {
+  console.error("❌ Failed to load auth routes:", error.message);
+}
+
+// Simple routes
+app.get("/api/tasks", (req, res) => {
+  res.json({ 
+    success: true,
+    message: "Tasks API",
+    database: dbConnected ? "available" : "offline",
+    endpoints: ["/ (GET)", "/filter (GET)", "/:id (GET)", "/ (POST)", "/:id (PUT)", "/:id (DELETE)"]
+  });
+});
+
+app.get("/api/notifications", (req, res) => {
+  res.json({ 
+    success: true,
+    message: "Notifications API",
+    database: dbConnected ? "available" : "offline"
+  });
+});
+
+// Error handler
 app.use((err, req, res, next) => {
-  console.error("Global Error:", err);
-  res.status(500).json({
-    success: false,
+  console.error("💥 Server Error:", err.message);
+  res.status(500).json({ 
+    success: false, 
     message: "Internal server error",
-    error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error: process.env.NODE_ENV === "development" ? err.message : undefined
   });
 });
 
 // 404 handler
 app.use("*", (req, res) => {
-  res.status(404).json({ success: false, message: "Endpoint not found" });
+  res.status(404).json({ 
+    success: false, 
+    message: "Endpoint not found",
+    path: req.originalUrl 
+  });
 });
 
-const startServer = async () => {
-  try {
-    console.log("🚀 Starting server...");
-    console.log("Environment:", process.env.NODE_ENV || "development");
-    
-    // Initialize database with retry logic
-    let retries = 5;
-    let connected = false;
-    
-    while (retries > 0 && !connected) {
-      try {
-        await initDatabase();
-        console.log("✅ Database initialized successfully");
-        connected = true;
-      } catch (dbError) {
-        console.error(`❌ Database connection attempt ${6 - retries} failed:`, dbError.message);
-        retries--;
-        
-        if (retries === 0) {
-          console.warn("⚠️ Server starting without database connection");
-          console.warn("⚠️ Some features may not work properly");
-        } else {
-          console.log(`⏳ Retrying in 5 seconds... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-      }
-    }
-    
-    // Untuk development/local server
-    if (process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1') {
-      const PORT = process.env.PORT || 5000;
-      app.listen(PORT, () => {
-        console.log(`✅ Server running on port ${PORT}`);
-        console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
-      });
-    }
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
-  }
-};
-
-startServer();
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log("\n🚀 Server running on port " + PORT);
+  console.log("📡 Environment: " + (process.env.NODE_ENV || "development"));
+  console.log("\n🔗 Test endpoints:");
+  console.log("   http://localhost:" + PORT);
+  console.log("   http://localhost:" + PORT + "/api/health");
+  console.log("   http://localhost:" + PORT + "/api/auth/test");
+  console.log("   http://localhost:" + PORT + "/api/auth/register (POST)");
+  console.log("   http://localhost:" + PORT + "/api/auth/login (POST)");
+});
 
 module.exports = app;
