@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+const getSequelize = require("../config/database");
+const sequelize = getSequelize();
 
 const Task = sequelize.define(
   "Task",
@@ -10,12 +11,8 @@ const Task = sequelize.define(
       primaryKey: true,
     },
     title: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
-      validate: {
-        notEmpty: true,
-        len: [1, 255],
-      },
     },
     description: {
       type: DataTypes.TEXT,
@@ -36,6 +33,10 @@ const Task = sequelize.define(
     reminder: {
       type: DataTypes.ENUM("none", "1-hour", "1-day", "same-day"),
       defaultValue: "none",
+    },
+    user_id: {
+      type: DataTypes.UUID,
+      allowNull: false,
     },
   },
   {

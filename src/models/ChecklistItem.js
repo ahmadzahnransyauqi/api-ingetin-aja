@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+const getSequelize = require("../config/database");
+const sequelize = getSequelize();
 
 const ChecklistItem = sequelize.define(
   "ChecklistItem",
@@ -10,7 +11,7 @@ const ChecklistItem = sequelize.define(
       primaryKey: true,
     },
     text: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
     },
     completed: {
@@ -20,11 +21,18 @@ const ChecklistItem = sequelize.define(
     order: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
+      field: "order",
+    },
+    task_id: {
+      type: DataTypes.UUID,
+      allowNull: false,
     },
   },
   {
     tableName: "checklist_items",
     timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
   }
 );
 

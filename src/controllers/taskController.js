@@ -201,7 +201,7 @@ const updateTask = async (req, res) => {
     const task = await Task.findOne({
       where: {
         id,
-        user_id: userId, // Only owner can update
+        user_id: userId,
       },
     });
 
@@ -224,10 +224,8 @@ const updateTask = async (req, res) => {
 
     // Update checklist items
     if (checklist && Array.isArray(checklist)) {
-      // Delete existing checklist items
       await ChecklistItem.destroy({ where: { task_id: task.id } });
-
-      // Create new checklist items
+      
       const checklistItems = checklist.map((item, index) => ({
         text: item.text,
         completed: item.completed || false,
@@ -240,10 +238,8 @@ const updateTask = async (req, res) => {
 
     // Update shared tasks
     if (sharedWith && Array.isArray(sharedWith)) {
-      // Delete existing shared tasks
       await SharedTask.destroy({ where: { task_id: task.id } });
-
-      // Create new shared tasks
+      
       const sharedTasks = sharedWith.map((email) => ({
         task_id: task.id,
         owner_id: userId,
@@ -286,7 +282,6 @@ const deleteTask = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Find task (only owner can delete)
     const task = await Task.findOne({
       where: {
         id,
@@ -367,7 +362,6 @@ const updateChecklistItem = async (req, res) => {
     const { completed } = req.body;
     const userId = req.user.id;
 
-    // Check if user has access to the task
     const task = await Task.findOne({
       where: {
         id: taskId,
@@ -430,7 +424,6 @@ const getTasksWithFilter = async (req, res) => {
       user_id: userId,
     };
 
-    // Apply filters
     switch (filter) {
       case "today":
         const today = new Date().toISOString().split("T")[0];

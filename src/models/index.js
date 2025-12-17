@@ -1,4 +1,6 @@
-const sequelize = require("../config/database");
+const getSequelize = require("../config/database");
+const sequelize = getSequelize();
+
 const User = require("./user");
 const Task = require("./Task");
 const ChecklistItem = require("./ChecklistItem");
@@ -12,7 +14,7 @@ ChecklistItem.belongsTo(Task, { foreignKey: "task_id" });
 
 Task.hasMany(SharedTask, { foreignKey: "task_id", onDelete: "CASCADE" });
 SharedTask.belongsTo(Task, { foreignKey: "task_id" });
-SharedTask.belongsTo(User, { foreignKey: "owner_id", as: "Owner" });
+SharedTask.belongsTo(User, { foreignKey: "owner_id" });
 
 const initDatabase = async () => {
   try {
@@ -20,12 +22,11 @@ const initDatabase = async () => {
     await sequelize.authenticate();
     console.log("✅ Database connection established.");
 
+    console.log("✅ Using existing database tables");
     
-    console.log("⏩ Skipping sequelize.sync() to prevent timeout.");
-    
+    return sequelize;
   } catch (error) {
-    console.error("❌ Error connecting to database:", error);
-
+    console.error("❌ Error connecting to database:", error.message);
     throw error;
   }
 };

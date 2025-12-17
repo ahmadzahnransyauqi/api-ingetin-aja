@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+const getSequelize = require("../config/database");
+const sequelize = getSequelize();
 const bcrypt = require("bcryptjs");
 
 const User = sequelize.define(
@@ -11,15 +12,12 @@ const User = sequelize.define(
       primaryKey: true,
     },
     username: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: false,
       unique: true,
-      validate: {
-        len: [3, 50],
-      },
     },
     email: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
       unique: true,
       validate: {
@@ -27,13 +25,15 @@ const User = sequelize.define(
       },
     },
     password_hash: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
     },
   },
   {
     tableName: "users",
     timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
     hooks: {
       beforeCreate: async (user) => {
         if (user.password_hash) {

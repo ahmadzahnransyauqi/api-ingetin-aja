@@ -1,43 +1,15 @@
-const jwt = require("jsonwebtoken");
-const { User } = require("../models");
+const express = require("express");
+const router = express.Router();
+const authController = require("../controllers/authController");
+const { protect } = require("../middleware/auth");
+const {
+  validateRegistration,
+  validateLogin,
+} = require("../middleware/validation");
 
-const protect = async (req, res, next) => {
-  let token;
+router.post("/register", validateRegistration, authController.register);
+router.post("/login", validateLogin, authController.login);
+router.get("/me", protect, authController.getCurrentUser);
+router.post("/logout", protect, authController.logout);
 
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findByPk(decoded.id, {
-        attributes: { exclude: ["password_hash"] },
-      });
-
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      next();
-    } catch (error) {
-      console.error("Auth middleware error:", error);
-      return res.status(401).json({
-        success: false,
-        message: "Not authorized, token failed",
-      });
-    }
-  }
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: "Not authorized, no token",
-    });
-  }
-};
-
-module.exports = { protect };
+module.exports = router;

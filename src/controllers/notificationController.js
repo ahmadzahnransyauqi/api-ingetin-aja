@@ -6,7 +6,6 @@ const getNotifications = async (req, res) => {
     const userId = req.user.id;
     const now = new Date();
 
-    // Find tasks with reminders
     const tasks = await Task.findAll({
       where: {
         [Op.or]: [
@@ -24,7 +23,6 @@ const getNotifications = async (req, res) => {
       ],
     });
 
-    // Calculate notifications
     const notifications = tasks.reduce((acc, task) => {
       const deadline = new Date(task.deadline);
       const timeDiff = deadline.getTime() - now.getTime();

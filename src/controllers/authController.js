@@ -11,7 +11,6 @@ const register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Check if user already exists
     const userExists = await User.findOne({ where: { email } });
     if (userExists) {
       return res.status(400).json({
@@ -20,7 +19,15 @@ const register = async (req, res) => {
       });
     }
 
-    // Create user
+   
+    const usernameExists = await User.findOne({ where: { username } });
+    if (usernameExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Username already taken",
+      });
+    }
+
     const user = await User.create({
       username,
       email,
@@ -49,7 +56,7 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
+    
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(401).json({
@@ -58,7 +65,7 @@ const login = async (req, res) => {
       });
     }
 
-    // Validate password
+   
     const isValidPassword = await user.validatePassword(password);
     if (!isValidPassword) {
       return res.status(401).json({
@@ -102,7 +109,6 @@ const getCurrentUser = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    // For JWT, we just need to clear the token on client side
     res.json({
       success: true,
       message: "Logout successful",
