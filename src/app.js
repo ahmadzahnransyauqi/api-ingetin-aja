@@ -146,3 +146,5 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+// Last deployment fix: 2025-12-17 10:02:50
+// Fixed pg package installation for Vercel
